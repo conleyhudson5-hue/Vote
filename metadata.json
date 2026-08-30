@@ -1,0 +1,6 @@
+{
+  "name": "Oscar Award Fan Vote",
+  "description": "Cinematic award fan-voting web application with live vote streaming, one-time email verification, personalized VIP ticket generator, and full admin CMS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

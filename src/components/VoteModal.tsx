@@ -1,7 +1,7 @@
-Import React, { useState, useEffect, useRef } from 'react';
-Import { motion, AnimatePresence } from 'motion/react';
-Import confetti from 'canvas-confetti';
-Import {
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import confetti from 'canvas-confetti';
+import {
   X,
   ShieldCheck,
   Mail,
@@ -20,10 +20,10 @@ Import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-Import { Nominee, CmsSettings, VipTicketData, EmailProviderOption } from '../types.js';
-Import { api, RequestCodeResponse } from '../services/api.js';
-Import { validateRealEmail } from '../services/emailValidator.js';
-Import {
+import { Nominee, CmsSettings, VipTicketData, EmailProviderOption } from '../types.js';
+import { api, RequestCodeResponse } from '../services/api.js';
+import { validateRealEmail } from '../services/emailValidator.js';
+import {
   GoogleLogo,
   OutlookLogo,
   YahooLogo,

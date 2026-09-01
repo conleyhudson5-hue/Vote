@@ -7,30 +7,13 @@ import { AdminPanel } from './components/AdminPanel.js';
 import { Footer } from './components/Footer.js';
 import { Nominee, CmsSettings, VipTicketData } from './types.js';
 import { api } from './services/api.js';
+import { DEFAULT_NOMINEES, DEFAULT_CMS } from './data/defaultData.js';
 import { Sparkles } from 'lucide-react';
 
-const DEFAULT_CMS: CmsSettings = {
-  brandName: 'Official Fan Choice Vote',
-  brandSubtitle: 'Annual Entertainment Awards • Verified Global Fan Choice',
-  heroHeadline: 'Cast Your Official Vote',
-  heroSubtext: 'Vote for your favorite nominated artists and instantly receive your verified digital VIP pass.',
-  votingBadgeText: '2026 Live Balloting Open',
-  voteButtonText: 'Vote',
-  eventDate: 'Sunday, March 29, 2026',
-  eventVenue: 'Grand Civic Arena • Live Broadcast',
-  themePrimaryColor: '#29B6F6',
-  themeSecondaryColor: '#FFFFFF',
-  themeAccentColor: '#0288D1',
-  ticketTitle: 'OFFICIAL VIP COMMEMORATIVE PASS',
-  ticketSubtext: 'Fan Choice Awards • Verified Gold Member',
-  footerText: '© 2026 Official Fan Choice Awards. Verified Balloting System with cryptographic voter integrity.',
-  allowMultipleVotes: false,
-};
-
 export default function App() {
-  const [nominees, setNominees] = useState<Nominee[]>([]);
+  const [nominees, setNominees] = useState<Nominee[]>(DEFAULT_NOMINEES);
   const [cms, setCms] = useState<CmsSettings>(DEFAULT_CMS);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Active Modals State
   const [selectedNomineeForVote, setSelectedNomineeForVote] = useState<Nominee | null>(null);

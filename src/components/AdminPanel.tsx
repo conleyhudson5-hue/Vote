@@ -251,7 +251,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       fromEmail: 'noreply@fanchoicevote.org',
     };
 
-    if (presetKey === 'gmail') {
+    if (presetKey === 'resend') {
+      setCmsForm({
+        ...cmsForm,
+        smtp: {
+          ...currentSmtp,
+          enabled: true,
+          host: 'smtp.resend.com',
+          port: 465,
+          secure: true,
+          user: 'resend',
+          fromName: currentSmtp.fromName || 'Oscar Fan Vote',
+          fromEmail: currentSmtp.fromEmail && !currentSmtp.fromEmail.includes('resend.dev') ? currentSmtp.fromEmail : 'vote@yourdomain.com',
+        },
+      });
+    } else if (presetKey === 'gmail') {
       setCmsForm({
         ...cmsForm,
         smtp: {
@@ -1234,7 +1248,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span className="text-xs font-semibold text-slate-700">Quick Provider Presets</span>
                       <span className="text-[11px] text-slate-400">Click to autofill recommended server host & port</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      <button
+                        type="button"
+                        onClick={() => applySmtpPreset('resend')}
+                        className="rounded-xl border border-sky-300 bg-sky-50/60 p-2.5 text-left text-xs font-semibold text-slate-800 hover:border-sky-400 hover:bg-sky-100/70 transition-colors shadow-2xs"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-sky-900">Resend (Custom)</span>
+                          <span className="rounded bg-sky-200/80 px-1 py-0.2 text-[9px] font-extrabold text-sky-800">API/SMTP</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">smtp.resend.com:465</div>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => applySmtpPreset('gmail')}
@@ -1249,7 +1275,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         onClick={() => applySmtpPreset('brevo')}
                         className="rounded-xl border border-slate-200 bg-white p-2.5 text-left text-xs font-semibold text-slate-800 hover:border-sky-300 hover:bg-sky-50/50 transition-colors"
                       >
-                        <div className="font-bold text-slate-900">Brevo (Sendinblue)</div>
+                        <div className="font-bold text-slate-900">Brevo</div>
                         <div className="text-[10px] text-slate-500 font-mono">smtp-relay.brevo.com:587</div>
                       </button>
 
@@ -1532,11 +1558,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       {/* From Email */}
                       <div>
                         <label className="block text-xs font-semibold text-slate-700">
-                          Sender From Email Address
+                          Sender From Email Address <span className="text-red-500">*</span>
                         </label>
                         <input
                           id="smtp-from-email-input"
                           type="email"
+                          required
                           value={cmsForm.smtp?.fromEmail || ''}
                           onChange={(e) =>
                             setCmsForm({
@@ -1556,9 +1583,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               },
                             })
                           }
-                          placeholder="e.g. vote@fanchoicevote.org or your username"
+                          placeholder="e.g. vote@yourverifieddomain.com"
                           className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2 text-xs text-slate-900 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
                         />
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          <strong>Important for Resend:</strong> Must end with your verified domain from Resend (e.g., <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-slate-700">noreply@yourdomain.com</code>). If left blank or using <code className="font-mono text-slate-600">onboarding@resend.dev</code>, Resend only allows sending to the account owner.
+                        </p>
                       </div>
 
                     </div>

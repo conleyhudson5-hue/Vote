@@ -22,14 +22,20 @@ export function buildSenderAddress(cms?: CmsSettings): string {
   const cleanName = configuredName.replace(/["\r\n<>]/g, '').trim() || 'Oscar Fan Vote';
 
   // Determine Email Address
-  const rawEmail = cms?.smtp?.fromEmail?.trim() 
-    || cms?.smtp?.user?.trim() 
-    || process.env.RESEND_FROM_EMAIL?.trim() 
-    || 'onboarding@resend.dev';
+  let rawEmail = cms?.smtp?.fromEmail?.trim();
+  
+  // If no fromEmail specified, check if user field is an email
+  if (!rawEmail && cms?.smtp?.user && cms.smtp.user.includes('@')) {
+    rawEmail = cms.smtp.user.trim();
+  }
+  
+  if (!rawEmail && process.env.RESEND_FROM_EMAIL) {
+    rawEmail = process.env.RESEND_FROM_EMAIL.trim();
+  }
 
   // Extract email address if rawEmail contains <...> or extra characters
-  const emailMatch = rawEmail.match(/<([^>]+)>/);
-  let cleanEmail = emailMatch ? emailMatch[1].trim() : rawEmail.trim();
+  const emailMatch = rawEmail?.match(/<([^>]+)>/);
+  let cleanEmail = emailMatch ? emailMatch[1].trim() : (rawEmail || '').trim();
   cleanEmail = cleanEmail.replace(/["'\s]/g, '');
 
   if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -48,7 +54,65 @@ export async function sendEmail(
   const smtp = cms?.smtp;
   const fromAddress = buildSenderAddress(cms);
 
-  // 1. Dynamic SMTP Dispatch if configured and enabled
+  // Check if Resend API key is available via SMTP pass (re_...) or env
+  const resendApiKey = (smtp?.pass && smtp.pass.startsWith('re_')) 
+    ? smtp.pass.trim() 
+    : (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.startsWith('re_') ? process.env.RESEND_API_KEY.trim() : null);
+
+  // 1. If SMTP is configured with host 'smtp.resend.com' or has a Resend API key, try direct Resend HTTPS API first
+  // This bypasses cloud container port restrictions on 465/587 and guarantees instant delivery over HTTPS port 443
+  if (resendApiKey && (smtp?.host?.includes('resend') || !smtp?.enabled || !smtp?.host)) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [to.trim()],
+          subject,
+          html,
+        }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { id?: string };
+        console.log(`[Resend API Success] Message ID: ${data.id} sent to: ${to} (From: ${fromAddress})`);
+        return { success: true, messageId: data.id, simulated: false, via: 'resend' };
+      } else {
+        const errText = await res.text();
+        console.warn(`[Resend API Notice] Status: ${res.status} | Details: ${errText}`);
+        
+        const isSandboxRestriction = res.status === 403 || errText.includes('testing emails to your own email address') || errText.includes('validation_error');
+        if (isSandboxRestriction) {
+          console.log(`[Resend Sandbox Notice] Sender (${fromAddress}) is using the testing sandbox domain. To send to any recipient, verify your domain in Resend and update the Sender From Email.`);
+          return {
+            success: true,
+            simulated: true,
+            isSandboxRestricted: true,
+            error: `Resend Domain Restriction: ${errText}`,
+            messageId: `sandbox_fallback_${Date.now()}`,
+            via: 'resend',
+          };
+        }
+
+        // Return error info with simulated fallback so voting doesn't block
+        return {
+          success: true,
+          simulated: true,
+          error: `Resend Notice (${res.status}): ${errText}`,
+          messageId: `err_fallback_${Date.now()}`,
+          via: 'resend',
+        };
+      }
+    } catch (apiErr: any) {
+      console.warn('[Resend API Error] Falling back to standard SMTP / simulator:', apiErr?.message);
+    }
+  }
+
+  // 2. Standard SMTP Dispatch via Nodemailer (for Gmail, SendGrid, Mailgun, Brevo, custom SMTP)
   if (smtp && smtp.enabled && smtp.host && smtp.host.trim() !== '') {
     try {
       const port = Number(smtp.port) || 587;
@@ -86,7 +150,6 @@ export async function sendEmail(
       };
     } catch (smtpErr: any) {
       console.error(`[SMTP Delivery Notice] Host: ${smtp.host}:${smtp.port} | Error:`, smtpErr.message || smtpErr);
-      // Fallback gracefully so verification passcodes are never lost
       return {
         success: true,
         simulated: true,
@@ -97,72 +160,14 @@ export async function sendEmail(
     }
   }
 
-  // 2. Resend API or Simulator
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey || apiKey.trim() === '' || apiKey === 're_123456789') {
-    console.log(`[Email Simulator] To: ${to} | Subject: "${subject}" | From: ${fromAddress}`);
-    return {
-      success: true,
-      simulated: true,
-      messageId: `sim_${Date.now()}`,
-      via: 'simulator',
-    };
-  }
-
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromAddress,
-        to: [to.trim()],
-        subject,
-        html,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn(`[Resend Notice] Status: ${res.status} | Details: ${errText}`);
-      
-      const isSandboxRestriction = res.status === 403 || errText.includes('validation_error') || errText.includes('testing emails to your own email address') || errText.includes('resend.com/domains');
-      
-      if (isSandboxRestriction) {
-        console.log(`[Resend Sandbox Fallback] Recipient (${to}) is not the Resend account owner in test mode. Switching to instant preview mode.`);
-        return {
-          success: true,
-          simulated: true,
-          isSandboxRestricted: true,
-          messageId: `sandbox_fallback_${Date.now()}`,
-          via: 'resend',
-        };
-      }
-
-      return {
-        success: true,
-        simulated: true,
-        error: `Resend Notice: ${errText}`,
-        messageId: `err_fallback_${Date.now()}`,
-        via: 'resend',
-      };
-    }
-
-    const data = (await res.json()) as { id?: string };
-    return { success: true, messageId: data.id, simulated: false, via: 'resend' };
-  } catch (err: any) {
-    console.warn('[Email Dispatch Warning] Falling back to simulator:', err?.message || err);
-    return {
-      success: true,
-      simulated: true,
-      messageId: `exception_fallback_${Date.now()}`,
-      error: err?.message || 'Network error during email dispatch',
-      via: 'simulator',
-    };
-  }
+  // 3. Fallback Simulator if no credentials configured
+  console.log(`[Email Simulator] To: ${to} | Subject: "${subject}" | From: ${fromAddress}`);
+  return {
+    success: true,
+    simulated: true,
+    messageId: `sim_${Date.now()}`,
+    via: 'simulator',
+  };
 }
 
 export async function testSmtpConnection(
@@ -170,6 +175,62 @@ export async function testSmtpConnection(
   testRecipient: string
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
+    const fromAddress = buildSenderAddress({ smtp } as any);
+    const fromName = smtp.fromName?.trim() || 'Oscar Fan Vote';
+
+    // If Resend API Key is provided or host is smtp.resend.com, test via Resend API first
+    const resendApiKey = (smtp.pass && smtp.pass.startsWith('re_')) 
+      ? smtp.pass.trim() 
+      : (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.startsWith('re_') ? process.env.RESEND_API_KEY.trim() : null);
+
+    if (resendApiKey && (smtp.host?.includes('resend') || smtp.user?.toLowerCase() === 'resend')) {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [testRecipient.trim()],
+          subject: `[Test] ${fromName} Email Configuration Verified`,
+          html: `
+            <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px;background-color:#F0F9FF;border-radius:12px;border:1px solid #BAE6FD;">
+              <h2 style="color:#0288D1;margin-top:0;">✅ Email Configuration Successful</h2>
+              <p style="color:#334155;">This is a live test email sent from <strong>${fromName}</strong> via Resend.</p>
+              <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:8px;padding:14px;margin:16px 0;">
+                <ul style="color:#475569;font-size:13px;margin:0;padding-left:18px;line-height:1.6;">
+                  <li><strong>Sender Name:</strong> ${fromName}</li>
+                  <li><strong>Sender Address:</strong> ${fromAddress}</li>
+                  <li><strong>Delivery Engine:</strong> Resend Verified Domain</li>
+                  <li><strong>Test Recipient:</strong> ${testRecipient}</li>
+                </ul>
+              </div>
+              <p style="color:#0288D1;font-size:12px;margin-bottom:0;">Your email dispatch is properly connected and ready to send voter verification codes and VIP tickets worldwide.</p>
+            </div>
+          `,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 403 || errText.includes('testing emails to your own email address')) {
+          return {
+            success: false,
+            error: `Resend Sandbox Restriction: Resend only allows sending to the account owner when using 'onboarding@resend.dev'. To send to '${testRecipient}', enter your verified domain in 'Sender From Email' (e.g. noreply@yourdomain.com). Details: ${errText}`,
+          };
+        }
+        return {
+          success: false,
+          error: `Resend API Error (${res.status}): ${errText}`,
+        };
+      }
+
+      const data = (await res.json()) as { id?: string };
+      return { success: true, messageId: data.id };
+    }
+
+    // Otherwise standard SMTP test via Nodemailer
     const port = Number(smtp.port) || 587;
     const isSecure = smtp.secure || port === 465;
 
@@ -184,14 +245,11 @@ export async function testSmtpConnection(
       tls: {
         rejectUnauthorized: false,
       },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
     });
 
     await transporter.verify();
-
-    const fromAddress = buildSenderAddress({ smtp } as any);
-    const fromName = smtp.fromName?.trim() || 'Oscar Fan Vote';
 
     const info = await transporter.sendMail({
       from: fromAddress,

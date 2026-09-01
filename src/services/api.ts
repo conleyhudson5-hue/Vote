@@ -6,6 +6,7 @@ export interface RequestCodeResponse {
   sessionId: string;
   expiresAt: number;
   simulated?: boolean;
+  emailDeliveryFailed?: boolean;
   previewCode?: string;
   message: string;
   error?: string;

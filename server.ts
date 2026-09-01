@@ -122,10 +122,10 @@ async function startServer() {
         sessionId,
         expiresAt,
         simulated: emailResult.simulated || false,
-        // In local sandbox/simulator mode without Resend API key, provide dev code for testing convenience
-        previewCode: emailResult.simulated ? code : undefined,
+        emailDeliveryFailed: emailResult.simulated || !emailResult.success,
+        previewCode: code,
         message: emailResult.simulated 
-          ? `Verification code dispatched! (Simulated mode: code is ${code})`
+          ? `Verification code prepared for ${verifiedEmail}.`
           : `A 6-digit verification code has been sent to ${verifiedEmail}.`,
       });
     } catch (err: any) {

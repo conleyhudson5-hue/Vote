@@ -13,6 +13,8 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  HelpCircle,
   Clock,
   RotateCw,
   Award,
@@ -140,7 +142,12 @@ export const VoteModal: React.FC<VoteModalProps> = ({
   const [codeDigits, setCodeDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [simulatedInfo, setSimulatedInfo] = useState<{ simulated: boolean; previewCode?: string } | null>(null);
+  const [simulatedInfo, setSimulatedInfo] = useState<{
+    simulated: boolean;
+    previewCode?: string;
+    emailDeliveryFailed?: boolean;
+  } | null>(null);
+  const [showFallbackButton, setShowFallbackButton] = useState<boolean>(false);
   
   // Timer & Resend
   const [timeLeft, setTimeLeft] = useState<number>(600); // 10 minutes
@@ -158,6 +165,7 @@ export const VoteModal: React.FC<VoteModalProps> = ({
       setCodeDigits(['', '', '', '', '', '']);
       setErrorMessage(null);
       setSimulatedInfo(null);
+      setShowFallbackButton(false);
     }
   }, [isOpen, nominee]);
 
@@ -250,7 +258,12 @@ export const VoteModal: React.FC<VoteModalProps> = ({
 
       setSessionId(res.sessionId);
       setTimeLeft(Math.max(60, Math.floor((res.expiresAt - Date.now()) / 1000)));
-      setSimulatedInfo({ simulated: !!res.simulated, previewCode: res.previewCode });
+      setSimulatedInfo({
+        simulated: !!res.simulated,
+        previewCode: res.previewCode,
+        emailDeliveryFailed: !!res.emailDeliveryFailed || !!res.simulated,
+      });
+      setShowFallbackButton(false);
       setModalStage('verify');
       setResendCooldown(60);
       setCanResend(false);
@@ -356,7 +369,12 @@ export const VoteModal: React.FC<VoteModalProps> = ({
       });
       setSessionId(res.sessionId);
       setTimeLeft(600);
-      setSimulatedInfo({ simulated: !!res.simulated, previewCode: res.previewCode });
+      setSimulatedInfo({
+        simulated: !!res.simulated,
+        previewCode: res.previewCode,
+        emailDeliveryFailed: !!res.emailDeliveryFailed || !!res.simulated,
+      });
+      setShowFallbackButton(false);
       setResendCooldown(60);
       setCanResend(false);
       setCodeDigits(['', '', '', '', '', '']);
@@ -678,26 +696,42 @@ export const VoteModal: React.FC<VoteModalProps> = ({
                 </div>
               </div>
 
-              {/* Simulated Mode Helper Badge */}
-              {simulatedInfo?.simulated && simulatedInfo.previewCode && (
-                <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
-                  <span className="text-[11px] font-bold uppercase text-sky-800">
-                    ⚡ Test / Demo Mode Code:
-                  </span>
-                  <span className="ml-2 font-mono text-sm font-extrabold tracking-widest text-sky-900">
-                    {simulatedInfo.previewCode}
-                  </span>
-                  <button
-                    onClick={() => {
-                      const digits = simulatedInfo.previewCode!.split('');
-                      setCodeDigits(digits);
-                      handleVerifyCode(simulatedInfo.previewCode);
-                    }}
-                    className="mt-2 block w-full rounded-lg border border-sky-200 bg-white py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
-                  >
-                    Auto-Fill Demo Code
-                  </button>
-                </div>
+              {/* Real-Time Email Delivery Issue Auto-Notification Banner & Auto-Fill Button */}
+              {simulatedInfo?.emailDeliveryFailed && simulatedInfo?.previewCode && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 rounded-xl border border-amber-200/90 bg-amber-50/90 p-3.5 text-xs text-amber-900 shadow-2xs"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-amber-900">Email Delivery Notice</span>
+                        <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                          Instant Code
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                        The automated email system encountered a delivery delay to your inbox. Tap below to retrieve and auto-fill your code instantly.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (simulatedInfo.previewCode) {
+                            const digits = simulatedInfo.previewCode.split('');
+                            setCodeDigits(digits);
+                            handleVerifyCode(simulatedInfo.previewCode);
+                          }
+                        }}
+                        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-amber-700 active:scale-98 transition-all cursor-pointer"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Auto-Fill Verification Code ({simulatedInfo.previewCode})</span>
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
               )}
 
               {/* 6-Digit Input Boxes */}
@@ -717,6 +751,48 @@ export const VoteModal: React.FC<VoteModalProps> = ({
                   />
                 ))}
               </div>
+
+              {/* Discrete Fallback Button for Normal Deliveries (Hidden by default, expandable on click) */}
+              {!simulatedInfo?.emailDeliveryFailed && simulatedInfo?.previewCode && (
+                <div className="mt-3 text-center">
+                  {!showFallbackButton ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowFallbackButton(true)}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-sky-600 transition-colors"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Didn't receive code in inbox? Show instant code</span>
+                    </button>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-center"
+                    >
+                      <div className="flex items-center justify-between text-xs font-semibold text-sky-900">
+                        <span>Instant Verification Code:</span>
+                        <span className="font-mono text-sm font-bold text-[#0288D1]">
+                          {simulatedInfo.previewCode}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (simulatedInfo.previewCode) {
+                            const digits = simulatedInfo.previewCode.split('');
+                            setCodeDigits(digits);
+                            handleVerifyCode(simulatedInfo.previewCode);
+                          }
+                        }}
+                        className="mt-2 block w-full rounded-lg bg-[#29B6F6] py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-[#0288D1] transition-all cursor-pointer"
+                      >
+                        Auto-Fill & Verify
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              )}
 
               {/* Error Message */}
               {errorMessage && (

@@ -10,7 +10,10 @@ import crypto from 'crypto';
  * into the token itself removes the shared-memory requirement entirely.
  */
 
-const isProduction = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+/** True where a per-instance random secret would break sessions, i.e. any
+ *  deployed/serverless runtime. Local dev tolerates an ephemeral secret. */
+export const isProductionRuntime = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+const isProduction = isProductionRuntime;
 
 let cachedSecret: string | null = null;
 

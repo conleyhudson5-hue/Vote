@@ -5,7 +5,7 @@ import { db, VerificationSession } from './db.js';
 import { sendEmail, testSmtpConnection, buildSenderAddress, generateVerificationCodeEmailHtml, generateVipTicketEmailHtml } from './email.js';
 import { validateServerRealEmail } from './emailValidator.js';
 import { sseBroker } from './sse.js';
-import { signToken, verifyToken, hashCode } from './session.js';
+import { signToken, verifyToken, hashCode, isProductionRuntime } from './session.js';
 
 const ADMIN_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VERIFICATION_TTL_MS = 10 * 60 * 1000;
@@ -24,6 +24,21 @@ interface VerificationPayload {
   salt: string;
   codeHash: string;
   exp: number;
+}
+
+/**
+ * Names of required environment variables that are absent. Values are never
+ * returned - only which keys are missing, so this is safe to expose publicly.
+ */
+function missingRequiredConfig(): string[] {
+  const missing: string[] = [];
+  // Only required where instances are not shared: local dev falls back to an
+  // ephemeral secret, which is fine for a single long-running process.
+  const secret = (process.env.APP_SECRET || process.env.ADMIN_SECRET || '').trim();
+  if (isProductionRuntime && secret.length < 16) missing.push('APP_SECRET');
+  if (!(process.env.RESEND_API_KEY || '').trim()) missing.push('RESEND_API_KEY');
+  if (!(process.env.RESEND_FROM_EMAIL || '').trim()) missing.push('RESEND_FROM_EMAIL');
+  return missing;
 }
 
 function getClientIp(req: express.Request): string {
@@ -67,7 +82,14 @@ export function createApp(): express.Express {
 
   // 1. Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now(), sseClients: sseBroker.getClientCount() });
+    const missing = missingRequiredConfig();
+    res.json({
+      status: missing.length === 0 ? 'ok' : 'misconfigured',
+      timestamp: Date.now(),
+      sseClients: sseBroker.getClientCount(),
+      // Names only - never the values.
+      missingConfig: missing,
+    });
   });
 
   // 2. Public Nominees
@@ -268,6 +290,17 @@ export function createApp(): express.Express {
       return res.status(401).json({ error: 'Incorrect admin password.' });
     }
 
+    // Signing requires APP_SECRET in production. Checking here turns an opaque
+    // 500 stack trace into a message that names the missing variable.
+    const missing = missingRequiredConfig();
+    if (missing.includes('APP_SECRET')) {
+      return res.status(503).json({
+        error:
+          'Server is misconfigured: APP_SECRET is not set. Add it to your Vercel ' +
+          'project environment variables and redeploy, then sign in again.',
+      });
+    }
+
     const token = signToken({ role: 'admin' }, ADMIN_TOKEN_TTL_MS);
 
     res.cookie('admin_session', token, {
@@ -458,6 +491,20 @@ export function createApp(): express.Express {
     }
     db.updateAdminPassword(newPassword);
     return res.json({ success: true, message: 'Admin password updated successfully.' });
+  });
+
+  // Any error escaping a route must still leave the API returning JSON; the
+  // default Express handler emits an HTML page (and leaks a stack trace), which
+  // clients parsing JSON cannot interpret.
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error(`[Unhandled API Error] ${req.method} ${req.path}:`, err);
+    if (res.headersSent) return;
+    const isConfigError = typeof err?.message === 'string' && err.message.includes('APP_SECRET');
+    res.status(isConfigError ? 503 : 500).json({
+      error: isConfigError
+        ? 'Server is misconfigured: APP_SECRET is not set. Add it to your environment variables and redeploy.'
+        : 'Internal server error.',
+    });
   });
 
   return app;

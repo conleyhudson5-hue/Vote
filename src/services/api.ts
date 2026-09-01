@@ -319,19 +319,31 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: trimmed }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token) {
-          localStorage.setItem(LS_ADMIN_TOKEN_KEY, data.token);
-          saveStoredAdminPassword(trimmed);
+
+      // A JSON response means a real API answered, and its verdict is
+      // authoritative - including its errors. Falling back to the local check
+      // after a server error would mint a token the server rejects on every
+      // subsequent admin request, which looks like "login silently does nothing".
+      // A non-JSON response (a static deployment serving index.html) means there
+      // is no API here, so the local fallback below still applies.
+      const isJsonApi = (res.headers.get('content-type') || '').includes('application/json');
+      if (isJsonApi) {
+        const data = await res.json().catch(() => null);
+        if (res.ok && data) {
+          if (data.token) {
+            localStorage.setItem(LS_ADMIN_TOKEN_KEY, data.token);
+            saveStoredAdminPassword(trimmed);
+          }
+          return data;
         }
-        return data;
-      } else if (res.status === 401 || res.status === 400) {
-        const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error || 'Incorrect admin password.');
+        throw new Error(data?.error || `Admin login failed (HTTP ${res.status}).`);
       }
     } catch (err: any) {
-      if (err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError') && !err.message.includes('Failed to fetch')) {
+      // Only a genuine transport failure should reach the offline fallback.
+      const message = err?.message || '';
+      const isNetworkFailure =
+        err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(message);
+      if (!isNetworkFailure) {
         throw err;
       }
     }

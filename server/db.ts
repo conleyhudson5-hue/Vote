@@ -1,9 +1,16 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import { Nominee, VoteRecord, VipTicketData, CmsSettings, AdminStats } from '../src/types.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+// Vercel's serverless filesystem is read-only apart from the OS temp dir, so the
+// JSON store has to live there in production. Note that /tmp is per-instance and
+// wiped on cold start: it keeps the app from crashing, but it is NOT durable
+// storage. Durable votes need an external database (see DEPLOYMENT.md).
+const DATA_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'oscar-vote-data')
+  : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 export interface VerificationSession {
@@ -60,7 +67,7 @@ const DEFAULT_CMS: CmsSettings = {
     user: '',
     pass: '',
     fromName: 'Oscar Fan Vote',
-    fromEmail: 'onboarding@resend.dev',
+    fromEmail: '',
   },
 };
 

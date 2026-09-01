@@ -11,38 +11,64 @@ export interface SendEmailResult {
 }
 
 /**
+ * Sender addresses that are placeholders rather than real, verified senders.
+ * Resend only allows `onboarding@resend.dev` to deliver to the account owner's
+ * own address, so it must never win over a configured verified domain.
+ */
+const PLACEHOLDER_SENDERS = new Set(['onboarding@resend.dev']);
+
+/** Pulls a bare address out of `"Name" <addr@host>` or a raw `addr@host`. */
+function extractEmail(raw?: string): string | null {
+  if (!raw) return null;
+  const angle = raw.match(/<([^>]+)>/);
+  const candidate = (angle ? angle[1] : raw).replace(/["'\s]/g, '').trim();
+  return candidate.includes('@') ? candidate : null;
+}
+
+/**
  * Builds a strictly compliant RFC 5322 "From" header formatted as:
  * "Oscar Fan Vote" <address@domain.com>
  * Guarantees email clients (Gmail, Apple Mail, Outlook) show "Oscar Fan Vote" as the sender name
  * rather than raw usernames like "noreply" or "onboarding".
+ *
+ * Resolution order for the address: admin-configured sender, then RESEND_FROM_EMAIL,
+ * then the SMTP username. A real verified sender always beats a placeholder, whichever
+ * source it came from - otherwise the stored `onboarding@resend.dev` default would
+ * permanently shadow a correctly configured verified domain.
  */
 export function buildSenderAddress(cms?: CmsSettings): string {
   // Determine Display Name (always defaulting to 'Oscar Fan Vote')
   const configuredName = cms?.smtp?.fromName?.trim() || cms?.brandName?.trim() || 'Oscar Fan Vote';
   const cleanName = configuredName.replace(/["\r\n<>]/g, '').trim() || 'Oscar Fan Vote';
 
-  // Determine Email Address
-  let rawEmail = cms?.smtp?.fromEmail?.trim();
-  
-  // If no fromEmail specified, check if user field is an email
-  if (!rawEmail && cms?.smtp?.user && cms.smtp.user.includes('@')) {
-    rawEmail = cms.smtp.user.trim();
-  }
-  
-  if (!rawEmail && process.env.RESEND_FROM_EMAIL) {
-    rawEmail = process.env.RESEND_FROM_EMAIL.trim();
-  }
+  const candidates = [
+    cms?.smtp?.fromEmail?.trim(),
+    process.env.RESEND_FROM_EMAIL?.trim(),
+    cms?.smtp?.user?.includes('@') ? cms.smtp.user.trim() : undefined,
+  ];
 
-  // Extract email address if rawEmail contains <...> or extra characters
-  const emailMatch = rawEmail?.match(/<([^>]+)>/);
-  let cleanEmail = emailMatch ? emailMatch[1].trim() : (rawEmail || '').trim();
-  cleanEmail = cleanEmail.replace(/["'\s]/g, '');
-
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    cleanEmail = 'onboarding@resend.dev';
+  // First pass: prefer a real, non-placeholder verified sender.
+  let cleanEmail: string | null = null;
+  for (const candidate of candidates) {
+    const email = extractEmail(candidate);
+    if (email && !PLACEHOLDER_SENDERS.has(email.toLowerCase())) {
+      cleanEmail = email;
+      break;
+    }
   }
 
-  return `"${cleanName}" <${cleanEmail}>`;
+  // Second pass: a placeholder is still better than no sender at all.
+  if (!cleanEmail) {
+    for (const candidate of candidates) {
+      const email = extractEmail(candidate);
+      if (email) {
+        cleanEmail = email;
+        break;
+      }
+    }
+  }
+
+  return `"${cleanName}" <${cleanEmail || 'onboarding@resend.dev'}>`;
 }
 
 export async function sendEmail(
@@ -83,32 +109,47 @@ export async function sendEmail(
         return { success: true, messageId: data.id, simulated: false, via: 'resend' };
       } else {
         const errText = await res.text();
-        console.warn(`[Resend API Notice] Status: ${res.status} | Details: ${errText}`);
-        
-        const isSandboxRestriction = res.status === 403 || errText.includes('testing emails to your own email address') || errText.includes('validation_error');
-        if (isSandboxRestriction) {
-          console.log(`[Resend Sandbox Notice] Sender (${fromAddress}) is using the testing sandbox domain. To send to any recipient, verify your domain in Resend and update the Sender From Email.`);
+        console.error(`[Resend API Failure] Status: ${res.status} | From: ${fromAddress} | To: ${to} | Details: ${errText}`);
+
+        const isSenderRejected =
+          res.status === 403 ||
+          errText.includes('testing emails to your own email address') ||
+          errText.includes('domain is not verified');
+
+        if (isSenderRejected) {
+          console.error(
+            `[Resend Sender Rejected] "${fromAddress}" is not a verified sender on this Resend account. ` +
+            `Set RESEND_FROM_EMAIL (or the admin panel's "Sender From Email") to an address on your verified domain.`
+          );
           return {
-            success: true,
-            simulated: true,
+            success: false,
+            simulated: false,
             isSandboxRestricted: true,
-            error: `Resend Domain Restriction: ${errText}`,
-            messageId: `sandbox_fallback_${Date.now()}`,
+            error: `Resend rejected sender "${fromAddress}": ${errText}`,
             via: 'resend',
           };
         }
 
-        // Return error info with simulated fallback so voting doesn't block
         return {
-          success: true,
-          simulated: true,
-          error: `Resend Notice (${res.status}): ${errText}`,
-          messageId: `err_fallback_${Date.now()}`,
+          success: false,
+          simulated: false,
+          error: `Resend API error ${res.status}: ${errText}`,
           via: 'resend',
         };
       }
     } catch (apiErr: any) {
-      console.warn('[Resend API Error] Falling back to standard SMTP / simulator:', apiErr?.message);
+      console.error('[Resend API Error] Request failed:', apiErr?.message);
+      // Only fall through to nodemailer when a genuinely different SMTP host is configured.
+      const smtpCanTakeOver = !!(smtp?.enabled && smtp.host && !smtp.host.includes('resend'));
+      if (!smtpCanTakeOver) {
+        return {
+          success: false,
+          simulated: false,
+          error: `Resend request failed: ${apiErr?.message || 'network error'}`,
+          via: 'resend',
+        };
+      }
+      console.warn('[Resend API Error] Falling back to the configured SMTP host.');
     }
   }
 
@@ -149,22 +190,25 @@ export async function sendEmail(
         via: 'smtp',
       };
     } catch (smtpErr: any) {
-      console.error(`[SMTP Delivery Notice] Host: ${smtp.host}:${smtp.port} | Error:`, smtpErr.message || smtpErr);
+      console.error(`[SMTP Delivery Failure] Host: ${smtp.host}:${smtp.port} | Error:`, smtpErr.message || smtpErr);
       return {
-        success: true,
-        simulated: true,
-        error: `SMTP Error (${smtp.host}): ${smtpErr.message || 'Connection failed'}`,
-        messageId: `smtp_fallback_${Date.now()}`,
+        success: false,
+        simulated: false,
+        error: `SMTP error (${smtp.host}:${smtp.port}): ${smtpErr.message || 'Connection failed'}`,
         via: 'smtp',
       };
     }
   }
 
   // 3. Fallback Simulator if no credentials configured
-  console.log(`[Email Simulator] To: ${to} | Subject: "${subject}" | From: ${fromAddress}`);
+  console.warn(
+    `[Email Simulator] No email provider configured - nothing was actually delivered. ` +
+    `To: ${to} | Subject: "${subject}" | From: ${fromAddress}`
+  );
   return {
     success: true,
     simulated: true,
+    error: 'No email provider configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL, or enable SMTP in the admin panel.',
     messageId: `sim_${Date.now()}`,
     via: 'simulator',
   };

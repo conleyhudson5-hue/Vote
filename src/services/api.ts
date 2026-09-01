@@ -25,7 +25,22 @@ const LS_NOMINEES_KEY = 'oscar_nominees_data';
 const LS_CMS_KEY = 'oscar_cms_data';
 const LS_VOTES_KEY = 'oscar_votes_data';
 const LS_TICKETS_KEY = 'oscar_tickets_data';
-const LS_SESSIONS_KEY = 'oscar_sessions_data';
+const LS_ADMIN_PASS_KEY = 'oscar_admin_custom_password';
+const LS_ADMIN_TOKEN_KEY = 'oscar_admin_token';
+
+function getStoredAdminPassword(): string {
+  try {
+    const custom = localStorage.getItem(LS_ADMIN_PASS_KEY);
+    if (custom && custom.trim().length > 0) return custom.trim();
+  } catch {}
+  return 'oscar2026admin';
+}
+
+function saveStoredAdminPassword(pass: string) {
+  try {
+    localStorage.setItem(LS_ADMIN_PASS_KEY, pass.trim());
+  } catch {}
+}
 
 function getLocalNominees(): Nominee[] {
   try {
@@ -278,7 +293,7 @@ export const api = {
   // Admin Endpoints
   async checkAdminAuth(): Promise<boolean> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/check-auth', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -288,46 +303,63 @@ export const api = {
       }
     } catch {}
     // Fallback: check token in localStorage
-    return !!localStorage.getItem('oscar_admin_token');
+    return !!localStorage.getItem(LS_ADMIN_TOKEN_KEY);
   },
 
   async adminLogin(password: string): Promise<{ success: boolean; token: string }> {
+    const trimmed = (password || '').trim();
+    if (!trimmed) {
+      throw new Error('Password is required.');
+    }
+
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: trimmed }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.token) localStorage.setItem('oscar_admin_token', data.token);
+        if (data.token) {
+          localStorage.setItem(LS_ADMIN_TOKEN_KEY, data.token);
+          saveStoredAdminPassword(trimmed);
+        }
         return data;
+      } else if (res.status === 401 || res.status === 400) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || 'Incorrect admin password.');
       }
-    } catch {}
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
+    }
 
-    // Fallback password check for demo/static deploy
-    if (password === 'oscar2026admin' || password === 'admin' || password === '123456') {
+    // Static fallback verification (e.g. Vercel static deploy):
+    const currentExpectedPass = getStoredAdminPassword();
+    if (trimmed === currentExpectedPass || (currentExpectedPass === 'oscar2026admin' && (trimmed === 'admin' || trimmed === '123456'))) {
       const token = `adm_token_${Date.now()}`;
-      localStorage.setItem('oscar_admin_token', token);
+      localStorage.setItem(LS_ADMIN_TOKEN_KEY, token);
+      saveStoredAdminPassword(trimmed);
       return { success: true, token };
     }
-    throw new Error('Invalid admin password. Default is: oscar2026admin');
+    throw new Error('Incorrect admin password. Please try again.');
   },
 
   async adminLogout(): Promise<void> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       await fetch('/api/admin/logout', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
     } catch {}
-    localStorage.removeItem('oscar_admin_token');
+    localStorage.removeItem(LS_ADMIN_TOKEN_KEY);
   },
 
   async getAdminStats(): Promise<{ stats: AdminStats }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/stats', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -370,7 +402,7 @@ export const api = {
 
   async getAllNomineesAdmin(): Promise<{ nominees: Nominee[] }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/nominees', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -381,7 +413,7 @@ export const api = {
 
   async saveNominee(nominee: Partial<Nominee>): Promise<{ nominee: Nominee }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const url = nominee.id ? `/api/admin/nominees/${nominee.id}` : '/api/admin/nominees';
       const method = nominee.id ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -419,7 +451,7 @@ export const api = {
 
   async deleteNominee(id: string): Promise<void> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       await fetch(`/api/admin/nominees/${id}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -431,7 +463,7 @@ export const api = {
 
   async adjustVotes(id: string, payload: { delta?: number; exact?: number }): Promise<void> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       await fetch(`/api/admin/nominees/${id}/adjust-votes`, {
         method: 'POST',
         headers: {
@@ -457,7 +489,7 @@ export const api = {
 
   async getAdminCms(): Promise<{ cms: CmsSettings }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/cms', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -468,7 +500,7 @@ export const api = {
 
   async updateCms(cms: Partial<CmsSettings>): Promise<{ cms: CmsSettings }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/cms', {
         method: 'PUT',
         headers: {
@@ -488,7 +520,7 @@ export const api = {
 
   async testSmtp(payload: any): Promise<{ success: boolean; message: string }> {
     try {
-      const token = localStorage.getItem('oscar_admin_token');
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
       const res = await fetch('/api/admin/test-smtp', {
         method: 'POST',
         headers: {
@@ -502,18 +534,38 @@ export const api = {
     return { success: true, message: 'SMTP test simulated: connection configuration valid.' };
   },
 
-  async changeAdminPassword(_newPassword: string): Promise<void> {
+  async changeAdminPassword(newPassword: string): Promise<void> {
+    const trimmed = (newPassword || '').trim();
+    if (trimmed.length < 6) {
+      throw new Error('New password must be at least 6 characters.');
+    }
+
     try {
-      const token = localStorage.getItem('oscar_admin_token');
-      await fetch('/api/admin/change-password', {
+      const token = localStorage.getItem(LS_ADMIN_TOKEN_KEY);
+      const res = await fetch('/api/admin/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ newPassword: _newPassword }),
+        body: JSON.stringify({ newPassword: trimmed }),
       });
-    } catch {}
+      if (res.ok) {
+        saveStoredAdminPassword(trimmed);
+        return;
+      }
+      const errJson = await res.json().catch(() => null);
+      if (errJson && errJson.error) {
+        throw new Error(errJson.error);
+      }
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError') && !err.message.includes('Failed to fetch')) {
+        throw err;
+      }
+    }
+
+    // Static fallback / offline update:
+    saveStoredAdminPassword(trimmed);
   },
 
   exportCsvUrl(): string {

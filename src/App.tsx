@@ -13,7 +13,7 @@ import { Sparkles } from 'lucide-react';
 export default function App() {
   const [nominees, setNominees] = useState<Nominee[]>(DEFAULT_NOMINEES);
   const [cms, setCms] = useState<CmsSettings>(DEFAULT_CMS);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Active Modals State
   const [selectedNomineeForVote, setSelectedNomineeForVote] = useState<Nominee | null>(null);
@@ -145,6 +145,7 @@ export default function App() {
           nominees={nominees}
           cms={cms}
           onVote={handleOpenVoteModal}
+          isLoading={isLoading}
         />
       </main>
 

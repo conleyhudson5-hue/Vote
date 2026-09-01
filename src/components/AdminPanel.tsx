@@ -111,7 +111,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Password change state
   const [newPassword, setNewPassword] = useState('');
-  const [passwordChangeMsg, setPasswordChangeMsg] = useState<string | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordChangeStatus, setPasswordChangeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Check auth on open
   useEffect(() => {
@@ -347,17 +349,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Password Change
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 6) {
-      setPasswordChangeMsg('Password must be at least 6 characters');
+    setPasswordChangeStatus(null);
+
+    const trimmed = newPassword.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (trimmed.length < 6) {
+      setPasswordChangeStatus({
+        type: 'error',
+        message: 'New password must be at least 6 characters long.',
+      });
       return;
     }
+
+    if (trimmed !== trimmedConfirm) {
+      setPasswordChangeStatus({
+        type: 'error',
+        message: 'New password and confirmation password do not match. Please verify.',
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
     try {
-      await api.changeAdminPassword(newPassword);
-      setPasswordChangeMsg('✅ Admin password updated successfully!');
+      await api.changeAdminPassword(trimmed);
+      setPasswordChangeStatus({
+        type: 'success',
+        message: 'Admin access password has been updated and synchronized successfully! Remember to use your new password next time you log in.',
+      });
       setNewPassword('');
-      setTimeout(() => setPasswordChangeMsg(null), 4000);
+      setConfirmPassword('');
     } catch (err: any) {
-      setPasswordChangeMsg(`Error: ${err.message}`);
+      setPasswordChangeStatus({
+        type: 'error',
+        message: err.message || 'Failed to update admin password. Please try again.',
+      });
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -1687,40 +1715,87 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* TAB 5: SECURITY */}
               {activeTab === 'security' && (
-                <div className="max-w-md space-y-4">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Admin Security</h3>
-                    <p className="text-xs text-slate-500">Update your admin control panel access password</p>
+                <div className="max-w-lg space-y-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-[#0288D1] border border-sky-100 shadow-2xs">
+                      <Key className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Admin Security Credentials</h3>
+                      <p className="text-xs text-slate-500">Update your master admin portal access password</p>
+                    </div>
                   </div>
 
                   <form onSubmit={handleChangePassword} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700">
-                        New Password
+                        New Master Password <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="password"
                         required
+                        minLength={6}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter at least 6 characters..."
-                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2 text-xs text-slate-900 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                        placeholder="Enter minimum 6 characters..."
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-900 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400">Must be at least 6 characters long.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Confirm New Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Re-type your new password..."
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-900 focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100"
                       />
                     </div>
 
-                    {passwordChangeMsg && (
-                      <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
-                        {passwordChangeMsg}
+                    {passwordChangeStatus && (
+                      <div
+                        className={`flex items-start gap-2.5 rounded-xl border p-3.5 text-xs ${
+                          passwordChangeStatus.type === 'success'
+                            ? 'border-emerald-200 bg-emerald-50/80 text-emerald-800'
+                            : 'border-red-200 bg-red-50/80 text-red-800'
+                        }`}
+                      >
+                        {passwordChangeStatus.type === 'success' ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+                        )}
+                        <span className="leading-relaxed font-medium">{passwordChangeStatus.message}</span>
                       </div>
                     )}
 
-                    <button
-                      type="submit"
-                      className="rounded-xl bg-[#29B6F6] px-5 py-2.5 text-xs font-semibold text-white hover:bg-[#0288D1]"
-                    >
-                      Update Password
-                    </button>
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={isChangingPassword}
+                        className="flex items-center justify-center gap-2 rounded-xl bg-[#29B6F6] px-6 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0288D1] active:scale-98 disabled:opacity-50 transition-all"
+                      >
+                        <Key className="h-3.5 w-3.5" />
+                        <span>{isChangingPassword ? 'Updating Password...' : 'Save New Password'}</span>
+                      </button>
+                    </div>
                   </form>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-600">
+                    <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5 text-[#0288D1]" />
+                      Password Storage Note
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      When updated, your new password will immediately be required for all future admin logins across both live backend servers and client deployments.
+                    </p>
+                  </div>
                 </div>
               )}
 

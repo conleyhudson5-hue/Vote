@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Search, Filter, Sparkles, TrendingUp, Layers, Award } from 'lucide-react';
 import { Nominee, CmsSettings } from '../types.js';
 import { NomineeCard } from './NomineeCard.js';
+import { NomineeCardSkeleton } from './NomineeCardSkeleton.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -11,12 +12,14 @@ interface NomineeGridProps {
   nominees: Nominee[];
   cms: CmsSettings;
   onVote: (nominee: Nominee) => void;
+  isLoading?: boolean;
 }
 
 export const NomineeGrid: React.FC<NomineeGridProps> = ({
   nominees,
   cms,
   onVote,
+  isLoading = false,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -169,41 +172,54 @@ export const NomineeGrid: React.FC<NomineeGridProps> = ({
 
         </div>
 
-        {/* Nominee Grid */}
-        <div
-          ref={gridRef}
-          id="nominees-card-grid"
-          className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
-        >
-          {filteredNominees.map((nominee) => (
-            <NomineeCard
-              key={nominee.id}
-              nominee={nominee}
-              onVote={onVote}
-              voteButtonText={cms.voteButtonText}
-              isLeading={nominee.id === leaderId}
-            />
-          ))}
-        </div>
-
-        {/* Empty State */}
-        {filteredNominees.length === 0 && (
-          <div className="mt-12 rounded-2xl border border-slate-200 bg-slate-50/50 p-12 text-center">
-            <Award className="mx-auto h-10 w-10 text-slate-300" />
-            <h3 className="mt-3 text-base font-bold text-slate-800">No Nominees Found</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              No artists match "{searchQuery}" in category "{selectedCategory}".
-            </p>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('All');
-              }}
-              className="mt-4 rounded-xl bg-white border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50"
-            >
-              Clear Filters
-            </button>
+        {/* Nominee Grid or Skeleton Grid */}
+        {isLoading ? (
+          <div
+            id="nominees-skeleton-grid"
+            className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
+          >
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <NomineeCardSkeleton key={`skeleton-${idx}`} index={idx} />
+            ))}
           </div>
+        ) : (
+          <>
+            <div
+              ref={gridRef}
+              id="nominees-card-grid"
+              className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
+            >
+              {filteredNominees.map((nominee) => (
+                <NomineeCard
+                  key={nominee.id}
+                  nominee={nominee}
+                  onVote={onVote}
+                  voteButtonText={cms.voteButtonText}
+                  isLeading={nominee.id === leaderId}
+                />
+              ))}
+            </div>
+
+            {/* Empty State */}
+            {filteredNominees.length === 0 && (
+              <div className="mt-12 rounded-2xl border border-slate-200 bg-slate-50/50 p-12 text-center">
+                <Award className="mx-auto h-10 w-10 text-slate-300" />
+                <h3 className="mt-3 text-base font-bold text-slate-800">No Nominees Found</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  No artists match "{searchQuery}" in category "{selectedCategory}".
+                </p>
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedCategory('All');
+                  }}
+                  className="mt-4 rounded-xl bg-white border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
+          </>
         )}
 
       </div>

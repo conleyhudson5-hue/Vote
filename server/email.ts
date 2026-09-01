@@ -10,6 +10,35 @@ export interface SendEmailResult {
   via?: 'smtp' | 'resend' | 'simulator';
 }
 
+/**
+ * Builds a strictly compliant RFC 5322 "From" header formatted as:
+ * "Oscar Fan Vote" <address@domain.com>
+ * Guarantees email clients (Gmail, Apple Mail, Outlook) show "Oscar Fan Vote" as the sender name
+ * rather than raw usernames like "noreply" or "onboarding".
+ */
+export function buildSenderAddress(cms?: CmsSettings): string {
+  // Determine Display Name (always defaulting to 'Oscar Fan Vote')
+  const configuredName = cms?.smtp?.fromName?.trim() || cms?.brandName?.trim() || 'Oscar Fan Vote';
+  const cleanName = configuredName.replace(/["\r\n<>]/g, '').trim() || 'Oscar Fan Vote';
+
+  // Determine Email Address
+  const rawEmail = cms?.smtp?.fromEmail?.trim() 
+    || cms?.smtp?.user?.trim() 
+    || process.env.RESEND_FROM_EMAIL?.trim() 
+    || 'onboarding@resend.dev';
+
+  // Extract email address if rawEmail contains <...> or extra characters
+  const emailMatch = rawEmail.match(/<([^>]+)>/);
+  let cleanEmail = emailMatch ? emailMatch[1].trim() : rawEmail.trim();
+  cleanEmail = cleanEmail.replace(/["'\s]/g, '');
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    cleanEmail = 'onboarding@resend.dev';
+  }
+
+  return `"${cleanName}" <${cleanEmail}>`;
+}
+
 export async function sendEmail(
   to: string,
   subject: string,
@@ -17,6 +46,7 @@ export async function sendEmail(
   cms?: CmsSettings
 ): Promise<SendEmailResult> {
   const smtp = cms?.smtp;
+  const fromAddress = buildSenderAddress(cms);
 
   // 1. Dynamic SMTP Dispatch if configured and enabled
   if (smtp && smtp.enabled && smtp.host && smtp.host.trim() !== '') {
@@ -39,10 +69,6 @@ export async function sendEmail(
         greetingTimeout: 10000,
         socketTimeout: 15000,
       });
-
-      const fromName = smtp.fromName || cms?.brandName || 'Oscar Fan Vote';
-      const fromEmail = smtp.fromEmail || smtp.user || 'noreply@fanchoicevote.org';
-      const fromAddress = `"${fromName.replace(/"/g, '')}" <${fromEmail.trim()}>`;
 
       const info = await transporter.sendMail({
         from: fromAddress,
@@ -71,13 +97,11 @@ export async function sendEmail(
     }
   }
 
-  // 2. Fallback to Resend API or Simulator
+  // 2. Resend API or Simulator
   const apiKey = process.env.RESEND_API_KEY;
-  const fromName = smtp?.fromName || cms?.brandName || 'Oscar Fan Vote';
-  const fromEmail = process.env.RESEND_FROM_EMAIL || `"${fromName}" <onboarding@resend.dev>`;
 
   if (!apiKey || apiKey.trim() === '' || apiKey === 're_123456789') {
-    console.log(`[Email Simulator] To: ${to} | Subject: "${subject}" | From: "${fromName}"`);
+    console.log(`[Email Simulator] To: ${to} | Subject: "${subject}" | From: ${fromAddress}`);
     return {
       success: true,
       simulated: true,
@@ -94,8 +118,8 @@ export async function sendEmail(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: fromEmail,
-        to: [to],
+        from: fromAddress,
+        to: [to.trim()],
         subject,
         html,
       }),
@@ -166,9 +190,8 @@ export async function testSmtpConnection(
 
     await transporter.verify();
 
-    const fromName = smtp.fromName || 'Oscar Fan Vote';
-    const fromEmail = smtp.fromEmail || smtp.user || 'noreply@fanchoicevote.org';
-    const fromAddress = `"${fromName.replace(/"/g, '')}" <${fromEmail.trim()}>`;
+    const fromAddress = buildSenderAddress({ smtp } as any);
+    const fromName = smtp.fromName?.trim() || 'Oscar Fan Vote';
 
     const info = await transporter.sendMail({
       from: fromAddress,

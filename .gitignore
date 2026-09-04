@@ -9,3 +9,4 @@ coverage/
 
 # Local JSON datastore (generated at runtime)
 data/
+.vercel
